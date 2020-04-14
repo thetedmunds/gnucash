@@ -213,10 +213,7 @@
 
 
 (define (teardown)
-  (let* ((book  (gnc-get-current-book))
-         (pricedb (gnc-pricedb-get-db book)))
-    (gnc-pricedb-destroy pricedb)
-    (gnc-clear-current-session)))
+  (gnc-clear-current-session))
 
 (define (collect collector shares value)
   ((car collector) 'add shares)
@@ -566,26 +563,22 @@
        (test-equal "MSFT totalavg 2012-01-15" (/ 4216500/100 1500)
                    (cadr (assoc (gnc-dmy2time64-neutral 15 01 2012)
                                 report-list)))
-;; We have to use gnc-numeric-div with rounding in order to match the results
-;; from the function. Astute observers will notice that the totals include the
-;; capital gain split but not the acutal sell split on the day because the
+;; Astute observers will notice that the totals include the
+;; capital gain split but not the actual sell split on the day because the
 ;; capital gain price is first in the list so that's the one (assoc) finds. See
 ;; the comment at the gnc:get-commodity-totalavg-prices definition for more
 ;; about the prices from this function.
        (test-equal "MSFT totalavg 2014-12-05"
-                   (gnc-numeric-div 6637500/100 2000 GNC-DENOM-AUTO
-                                    (logior (GNC-DENOM-SIGFIGS 8) GNC-RND-ROUND))
-                   (cadr (assoc (gnc-dmy2time64-neutral 5 12 2014)
-                                report-list)))
+         (/ 6637500/100 2000)
+         (cadr (assoc (gnc-dmy2time64-neutral 5 12 2014)
+                      report-list)))
        (test-equal "MSFT totalavg 2015-04-02"
-                   (gnc-numeric-div 9860700/100 2800 GNC-DENOM-AUTO
-                                    (logior (GNC-DENOM-SIGFIGS 8) GNC-RND-ROUND))
-                   (cadr (assoc (gnc-dmy2time64-neutral 2 4 2015) report-list)))
+         (/ 9860700/100 2800)
+         (cadr (assoc (gnc-dmy2time64-neutral 2 4 2015) report-list)))
        (test-equal "MSFT totalavg 2016-03-11"
-                   (gnc-numeric-div 14637000/100 3700 GNC-DENOM-AUTO
-                                    (logior (GNC-DENOM-SIGFIGS 8) GNC-RND-ROUND))
-                   (cadr (assoc (gnc-dmy2time64-neutral 11 3 2016)
-                                report-list))))
+         (/ 14637000/100 3700)
+         (cadr (assoc (gnc-dmy2time64-neutral 11 3 2016)
+                      report-list))))
      (test-end "Microsoft-USD")
 
      (test-begin "Daimler-DEM")
@@ -693,7 +686,39 @@
            (exchange-fn
             (gnc:make-gnc-monetary AAPL 1)
             USD
-            (gnc-dmy2time64-neutral 20 02 2014)))))
+            (gnc-dmy2time64-neutral 20 02 2014))))
+
+        (test-equal "gnc:case-exchange-time-fn weighted-average 09/09/2013"
+          307/5
+          (gnc:gnc-monetary-amount
+           (exchange-fn
+            (gnc:make-gnc-monetary AAPL 1)
+            USD
+            (gnc-dmy2time64-neutral 09 09 2013))))
+
+        (test-equal "gnc:case-exchange-time-fn weighted-average 11/08/2014"
+          9366/125
+          (gnc:gnc-monetary-amount
+           (exchange-fn
+            (gnc:make-gnc-monetary AAPL 1)
+            USD
+            (gnc-dmy2time64-neutral 11 08 2014))))
+
+        (test-equal "gnc:case-exchange-time-fn weighted-average 22/10/2015"
+          27663/325
+          (gnc:gnc-monetary-amount
+           (exchange-fn
+            (gnc:make-gnc-monetary AAPL 1)
+            USD
+            (gnc-dmy2time64-neutral 22 10 2015))))
+
+        (test-equal "gnc:case-exchange-time-fn weighted-average 24/10/2015"
+          27663/325
+          (gnc:gnc-monetary-amount
+           (exchange-fn
+            (gnc:make-gnc-monetary AAPL 1)
+            USD
+            (gnc-dmy2time64-neutral 24 10 2015)))))
 
       (let ((exchange-fn (gnc:case-exchange-time-fn
                           'average-cost USD
@@ -701,7 +726,7 @@
                           (gnc-dmy2time64-neutral 20 02 2016)
                           #f #f)))
         (test-equal "gnc:case-exchange-time-fn average-cost 20/02/2012"
-          8073/100
+          14127/175
           (gnc:gnc-monetary-amount
            (exchange-fn
             (gnc:make-gnc-monetary AAPL 1)

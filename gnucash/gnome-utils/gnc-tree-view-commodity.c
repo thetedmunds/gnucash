@@ -58,7 +58,7 @@ typedef struct GncTreeViewCommodityPrivate
 } GncTreeViewCommodityPrivate;
 
 #define GNC_TREE_VIEW_COMMODITY_GET_PRIVATE(o)  \
-   (G_TYPE_INSTANCE_GET_PRIVATE ((o), GNC_TYPE_TREE_VIEW_COMMODITY, GncTreeViewCommodityPrivate))
+   ((GncTreeViewCommodityPrivate*)g_type_instance_get_private((GTypeInstance*)o, GNC_TYPE_TREE_VIEW_COMMODITY))
 
 
 /************************************************************/
@@ -404,9 +404,7 @@ gnc_tree_view_commodity_new (QofBook *book,
     g_object_set_data(G_OBJECT(col), DEFAULT_VISIBLE, GINT_TO_POINTER(1));
     gnc_tree_view_add_toggle_column(
               view, _("Get Quotes"),
-              /* Translators: This string has a context prefix; the translation
-                 must only contain the part after the | character. */
-              Q_("Column letter for 'Get Quotes'|Q"), "quote_flag",
+              C_("Column letter for 'Get Quotes'", "Q"), "quote_flag",
               GNC_TREE_MODEL_COMMODITY_COL_QUOTE_FLAG,
               GNC_TREE_MODEL_COMMODITY_COL_VISIBILITY,
               sort_by_quote_flag,
@@ -576,6 +574,11 @@ gnc_tree_view_commodity_set_filter (GncTreeViewCommodity *view,
 
     s_model = gtk_tree_view_get_model(GTK_TREE_VIEW(view));
     f_model = gtk_tree_model_sort_get_model(GTK_TREE_MODEL_SORT(s_model));
+
+    /* disconnect model from view */
+    g_object_ref (G_OBJECT(s_model));
+    gtk_tree_view_set_model (GTK_TREE_VIEW(view), NULL);
+
     gtk_tree_model_filter_set_visible_func (GTK_TREE_MODEL_FILTER (f_model),
                                             gnc_tree_view_commodity_filter_helper,
                                             fd,
@@ -584,6 +587,11 @@ gnc_tree_view_commodity_set_filter (GncTreeViewCommodity *view,
     /* Whack any existing levels. The top two levels have been created
      * before this routine can be called. */
     gtk_tree_model_filter_refilter (GTK_TREE_MODEL_FILTER (f_model));
+
+    /* connect model to view */
+    gtk_tree_view_set_model (GTK_TREE_VIEW(view), s_model);
+    g_object_unref (G_OBJECT(s_model));
+
     LEAVE(" ");
 }
 
@@ -647,6 +655,46 @@ gnc_tree_view_commodity_get_selected_commodity (GncTreeViewCommodity *view)
     return commodity;
 }
 
+/*
+ * Select the commodity in the commodity tree view.
+ */
+void
+gnc_tree_view_commodity_select_commodity (GncTreeViewCommodity *view, gnc_commodity *commodity)
+{
+    GtkTreeSelection *selection;
+    GtkTreeModel *model, *f_model, *s_model;
+    GtkTreePath *tree_path;
+    GtkTreePath *f_tree_path;
+    GtkTreePath *s_tree_path;
+
+    g_return_if_fail (GNC_IS_TREE_VIEW_COMMODITY(view));
+
+    if (!commodity)
+        return;
+
+    selection = gtk_tree_view_get_selection (GTK_TREE_VIEW(view));
+
+    s_model = gtk_tree_view_get_model (GTK_TREE_VIEW(view));
+    f_model = gtk_tree_model_sort_get_model (GTK_TREE_MODEL_SORT (s_model));
+    model = gtk_tree_model_filter_get_model (GTK_TREE_MODEL_FILTER (f_model));
+
+    tree_path = gnc_tree_model_commodity_get_path_from_commodity (GNC_TREE_MODEL_COMMODITY(model), commodity);
+
+    if (tree_path)
+    {
+        f_tree_path = gtk_tree_model_filter_convert_child_path_to_path
+                                   (GTK_TREE_MODEL_FILTER (f_model), tree_path);
+
+        s_tree_path = gtk_tree_model_sort_convert_child_path_to_path
+                                   (GTK_TREE_MODEL_SORT (s_model), f_tree_path);
+
+        gtk_tree_view_expand_to_path (GTK_TREE_VIEW(view), s_tree_path);
+        gtk_tree_selection_select_path (selection, s_tree_path);
+        gtk_tree_path_free (tree_path);
+        gtk_tree_path_free (f_tree_path);
+        gtk_tree_path_free (s_tree_path);
+    }
+}
 
 #if 0 /* Not Used */
 /*

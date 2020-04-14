@@ -46,6 +46,7 @@
 #include "dialog-employee.h"
 #include "dialog-invoice.h"
 #include "dialog-job.h"
+#include "dialog-payment.h"
 
 #include "gncOwner.h"
 #include "dialog-utils.h"
@@ -58,6 +59,7 @@
 #include "gnc-tree-view-owner.h"
 #include "gnc-ui.h"
 #include "gnc-ui-util.h"
+#include "gnc-window.h"
 #include "guile-mappings.h"
 #include "dialog-lot-viewer.h"
 #include "dialog-object-references.h"
@@ -86,7 +88,7 @@ typedef struct GncPluginPageOwnerTreePrivate
 } GncPluginPageOwnerTreePrivate;
 
 #define GNC_PLUGIN_PAGE_OWNER_TREE_GET_PRIVATE(o)  \
-   (G_TYPE_INSTANCE_GET_PRIVATE ((o), GNC_TYPE_PLUGIN_PAGE_OWNER_TREE, GncPluginPageOwnerTreePrivate))
+   ((GncPluginPageOwnerTreePrivate*)g_type_instance_get_private((GTypeInstance*)o, GNC_TYPE_PLUGIN_PAGE_OWNER_TREE))
 
 static GObjectClass *parent_class = NULL;
 
@@ -123,9 +125,11 @@ static void gnc_plugin_page_owner_tree_cmd_edit_owner (GtkAction *action, GncPlu
 static void gnc_plugin_page_owner_tree_cmd_delete_owner (GtkAction *action, GncPluginPageOwnerTree *page);
 #endif
 static void gnc_plugin_page_owner_tree_cmd_view_filter_by (GtkAction *action, GncPluginPageOwnerTree *page);
+static void gnc_plugin_page_owner_tree_cmd_refresh (GtkAction *action, GncPluginPageOwnerTree *page);
 static void gnc_plugin_page_owner_tree_cmd_new_invoice (GtkAction *action, GncPluginPageOwnerTree *page);
 static void gnc_plugin_page_owner_tree_cmd_owners_report (GtkAction *action, GncPluginPageOwnerTree *plugin_page);
 static void gnc_plugin_page_owner_tree_cmd_owner_report (GtkAction *action, GncPluginPageOwnerTree *plugin_page);
+static void gnc_plugin_page_owner_tree_cmd_process_payment (GtkAction *action, GncPluginPageOwnerTree *plugin_page);
 
 
 static guint plugin_page_signals[LAST_SIGNAL] = { 0 };
@@ -181,6 +185,11 @@ static GtkActionEntry gnc_plugin_page_owner_tree_actions [] =
         "ViewFilterByAction", NULL, N_("_Filter By..."), NULL, NULL,
         G_CALLBACK (gnc_plugin_page_owner_tree_cmd_view_filter_by)
     },
+    {
+        "ViewRefreshAction", "view-refresh", N_("_Refresh"), "<primary>r",
+        N_("Refresh this window"),
+        G_CALLBACK (gnc_plugin_page_owner_tree_cmd_refresh)
+    },
 
     /* Business menu */
     {
@@ -223,6 +232,11 @@ static GtkActionEntry gnc_plugin_page_owner_tree_actions [] =
         N_("Show employee report"),
         G_CALLBACK (gnc_plugin_page_owner_tree_cmd_owner_report)
     },
+    {
+        "OTProcessPaymentAction", GNC_ICON_INVOICE_PAY,
+        N_("Process Payment"), NULL, N_("Process Payment"),
+        G_CALLBACK (gnc_plugin_page_owner_tree_cmd_process_payment)
+    },
 };
 /** The number of actions provided by this plugin. */
 static guint gnc_plugin_page_owner_tree_n_actions = G_N_ELEMENTS (gnc_plugin_page_owner_tree_actions);
@@ -235,6 +249,7 @@ static const gchar *actions_requiring_owner_rw[] =
     "OTEditVendorAction",
     "OTEditCustomerAction",
     "OTEditEmployeeAction",
+    "OTProcessPaymentAction",
 /* FIXME disabled due to crash    "EditDeleteOwnerAction", */
     NULL
 };
@@ -246,6 +261,7 @@ static const gchar *actions_requiring_owner_always[] =
     "OTVendorReportAction",
     "OTCustomerReportAction",
     "OTEmployeeReportAction",
+    "OTProcessPaymentAction",
     NULL
 };
 
@@ -258,6 +274,7 @@ static const gchar* readonly_inactive_actions[] =
     "OTNewBillAction",
     "OTNewInvoiceAction",
     "OTNewVoucherAction",
+    "OTProcessPaymentAction",
     NULL
 };
 
@@ -276,6 +293,7 @@ static action_toolbar_labels toolbar_labels[] =
     { "OTNewVoucherAction",             N_("New Voucher") },
     { "OTVendorListingReportAction",    N_("Vendor Listing") },
     { "OTCustomerListingReportAction",  N_("Customer Listing") },
+    { "OTProcessPaymentAction",         N_("Process Payment") },
 /* FIXME disable due to crash   { "EditDeleteOwnerAction",   N_("Delete") },*/
     { NULL, NULL },
 };
@@ -359,48 +377,25 @@ gnc_plugin_page_owner_tree_new (GncOwnerType owner_type)
     return GNC_PLUGIN_PAGE(plugin_page);
 }
 
-
-static gboolean
-gnc_plugin_page_owner_focus (GtkTreeView *tree_view)
-{
-    if (GTK_IS_TREE_VIEW(tree_view))
-    {
-        if (!gtk_widget_is_focus (GTK_WIDGET(tree_view)))
-            gtk_widget_grab_focus (GTK_WIDGET(tree_view));
-    }
-    return FALSE;
-}
-
-
 /**
  * Whenever the current page is changed, if an owner page is
- * the current page, set focus on the treeview.
+ * the current page, set focus on the tree view.
  */
-static void
-gnc_plugin_page_owner_main_window_page_changed (GncMainWindow *window,
-        GncPluginPage *plugin_page, gpointer user_data)
+static gboolean
+gnc_plugin_page_owner_focus_widget (GncPluginPage *owner_plugin_page)
 {
-    // We continue only if the plugin_page is a valid
-    if (!plugin_page || !GNC_IS_PLUGIN_PAGE(plugin_page))
-        return;
-
-    if (gnc_main_window_get_current_page (window) == plugin_page)
+    if (GNC_IS_PLUGIN_PAGE_OWNER_TREE(owner_plugin_page))
     {
-        GncPluginPageOwnerTree *page;
-        GncPluginPageOwnerTreePrivate *priv;
+        GncPluginPageOwnerTreePrivate *priv = GNC_PLUGIN_PAGE_OWNER_TREE_GET_PRIVATE(owner_plugin_page);
+        GtkTreeView *tree_view = priv->tree_view;
 
-        if (!GNC_IS_PLUGIN_PAGE_OWNER_TREE(plugin_page))
-            return;
-
-        page = GNC_PLUGIN_PAGE_OWNER_TREE(plugin_page);
-        priv = GNC_PLUGIN_PAGE_OWNER_TREE_GET_PRIVATE(page);
-
-        // The page changed signal is emitted multiple times so we need
-        // to use an idle_add to change the focus to the tree view
-        g_idle_remove_by_data (GTK_TREE_VIEW (priv->tree_view));
-        g_idle_add ((GSourceFunc)gnc_plugin_page_owner_focus,
-                      GTK_TREE_VIEW (priv->tree_view));
+        if (GTK_IS_TREE_VIEW(tree_view))
+        {
+            if (!gtk_widget_is_focus (GTK_WIDGET(tree_view)))
+                gtk_widget_grab_focus (GTK_WIDGET(tree_view));
+        }
     }
+    return FALSE;
 }
 
 G_DEFINE_TYPE_WITH_PRIVATE(GncPluginPageOwnerTree, gnc_plugin_page_owner_tree, GNC_TYPE_PLUGIN_PAGE)
@@ -421,6 +416,7 @@ gnc_plugin_page_owner_tree_class_init (GncPluginPageOwnerTreeClass *klass)
     gnc_plugin_class->destroy_widget  = gnc_plugin_page_owner_tree_destroy_widget;
     gnc_plugin_class->save_page       = gnc_plugin_page_owner_tree_save_page;
     gnc_plugin_class->recreate_page   = gnc_plugin_page_owner_tree_recreate_page;
+    gnc_plugin_class->focus_page_function = gnc_plugin_page_owner_focus_widget;
 
     plugin_page_signals[OWNER_SELECTED] =
         g_signal_new ("owner_selected",
@@ -570,7 +566,6 @@ gnc_plugin_page_owner_tree_create_widget (GncPluginPage *plugin_page)
 {
     GncPluginPageOwnerTree *page;
     GncPluginPageOwnerTreePrivate *priv;
-    GncMainWindow  *window;
     GtkTreeSelection *selection;
     GtkTreeView *tree_view;
     GtkWidget *scrolled_window;
@@ -685,10 +680,9 @@ gnc_plugin_page_owner_tree_create_widget (GncPluginPage *plugin_page)
     gnc_gui_component_set_session (priv->component_id,
                                    gnc_get_current_session());
 
-    window = GNC_MAIN_WINDOW(GNC_PLUGIN_PAGE(plugin_page)->window);
-    g_signal_connect(window, "page_changed",
-                     G_CALLBACK(gnc_plugin_page_owner_main_window_page_changed),
-                     plugin_page);
+    g_signal_connect (G_OBJECT(plugin_page), "inserted",
+                      G_CALLBACK(gnc_plugin_page_inserted_cb),
+                      NULL);
 
     LEAVE("widget = %p", priv->widget);
     return priv->widget;
@@ -704,8 +698,11 @@ gnc_plugin_page_owner_tree_destroy_widget (GncPluginPage *plugin_page)
     page = GNC_PLUGIN_PAGE_OWNER_TREE (plugin_page);
     priv = GNC_PLUGIN_PAGE_OWNER_TREE_GET_PRIVATE(page);
 
+    // Remove the page_changed signal callback
+    gnc_plugin_page_disconnect_page_changed (GNC_PLUGIN_PAGE(plugin_page));
+
     // Remove the page focus idle function if present
-    g_idle_remove_by_data (GTK_TREE_VIEW (priv->tree_view));
+    g_idle_remove_by_data (plugin_page);
 
     if (priv->widget)
     {
@@ -1150,6 +1147,17 @@ gnc_plugin_page_owner_tree_cmd_view_filter_by (GtkAction *action,
     LEAVE(" ");
 }
 
+static void
+gnc_plugin_page_owner_tree_cmd_refresh (GtkAction *action,
+        GncPluginPageOwnerTree *page)
+{
+    GncPluginPageOwnerTreePrivate *priv;
+
+    g_return_if_fail(GNC_IS_PLUGIN_PAGE_OWNER_TREE(page));
+
+    priv = GNC_PLUGIN_PAGE_OWNER_TREE_GET_PRIVATE(page);
+    gtk_widget_queue_draw (priv->widget);
+}
 
 static void
 gnc_plugin_page_owner_tree_cmd_new_invoice (GtkAction *action,
@@ -1247,5 +1255,20 @@ gnc_plugin_page_owner_tree_cmd_owner_report (GtkAction *action,
     LEAVE(" ");
 }
 
+
+static void
+gnc_plugin_page_owner_tree_cmd_process_payment (GtkAction *action,
+                                                GncPluginPageOwnerTree *plugin_page)
+{
+    ENTER("(action %p, plugin_page %p)", action, plugin_page);
+
+    g_return_if_fail(GNC_IS_PLUGIN_PAGE_OWNER_TREE(plugin_page));
+
+    gnc_ui_payment_new (GTK_WINDOW(GNC_PLUGIN_PAGE(plugin_page)->window),
+                        gnc_plugin_page_owner_tree_get_current_owner (plugin_page),
+                        gnc_get_current_book ());
+
+    LEAVE(" ");
+}
 /** @} */
 /** @} */

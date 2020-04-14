@@ -809,7 +809,7 @@ static void gnc_gsettings_migrate_from_gconf (void)
     command = g_strconcat ("(use-modules (migrate-prefs))(migration-prepare \"",
                            base_dir, "\")", NULL);
     DEBUG ("command = %s", command);
-    migration_ok = scm_is_true (scm_c_eval_string (command));
+    migration_ok = scm_is_true (scm_eval_string (scm_from_utf8_string (command)));
     g_free (command);
     if (!migration_ok)
     {
@@ -867,7 +867,7 @@ static void gnc_gsettings_migrate_from_gconf (void)
     command = g_strconcat ("(use-modules (migrate-prefs))(migration-cleanup \"",
                            base_dir, "\")", NULL);
     DEBUG ("command = %s", command);
-    migration_ok = scm_is_true (scm_c_eval_string (command));
+    migration_ok = scm_is_true (scm_eval_string (scm_from_utf8_string (command)));
     g_free (command);
     if (!migration_ok) /* Cleanup step failed, not critical */
         PWARN ("Cleanup step failed. You may need to delete %s/.gnc-migration-tmp manually.", base_dir);
@@ -885,7 +885,7 @@ void gnc_gsettings_version_upgrade (void)
     /* Use versioning to ensure this routine will only sync once for each
      * superseded setting */
     int old_maj_min = gnc_gsettings_get_int (GNC_PREFS_GROUP_GENERAL, GNC_PREF_VERSION);
-    int cur_maj_min = GNUCASH_MAJOR_VERSION * 100 + GNUCASH_MINOR_VERSION;
+    int cur_maj_min = PROJECT_VERSION_MAJOR * 100 + PROJECT_VERSION_MINOR;
 
     /* Migrate preferences from gconf to gsettings */
     if (!gnc_gsettings_get_bool (GNC_PREFS_GROUP_GENERAL, GNC_PREF_MIGRATE_PREFS_DONE))

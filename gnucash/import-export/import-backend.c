@@ -387,8 +387,24 @@ tokenize_string(GList* existing_tokens, const char *string)
     /* add each token to the token GList */
     while (stringpos && *stringpos)
     {
-        /* prepend the char* to the token GList */
-        existing_tokens = g_list_prepend(existing_tokens, g_strdup(*stringpos));
+        if (strlen(*stringpos) > 0)
+        {
+            /* check for duplicated tokens */
+            gboolean duplicated = FALSE;
+            for (GList* token = existing_tokens; token != NULL; token = token->next)
+            {
+                if (g_strcmp0(token->data, *stringpos) == 0)
+                {
+                    duplicated = TRUE;
+                    break;
+                }
+            }
+            if (duplicated == FALSE)
+            {
+                /* prepend the char* to the token GList */
+                existing_tokens = g_list_prepend(existing_tokens, g_strdup(*stringpos));
+            }
+        }
 
         /* then move to the next string */
         stringpos++;
@@ -908,7 +924,7 @@ gnc_import_process_trans_item (GncImportMatchMap *matchmap,
                (gnc_import_TransInfo_get_trans (trans_info)));*/
             {
                 /* This is a quick workaround for the bug described in
-                		 http://gnucash.org/pipermail/gnucash-devel/2003-August/009982.html
+                		 http://lists.gnucash.org/pipermail/gnucash-devel/2003-August/009982.html
                        Assume that importers won't create transactions involving two or more
                        currencies so we can use xaccTransGetImbalanceValue. */
                 imbalance_value =

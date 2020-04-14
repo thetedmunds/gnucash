@@ -288,7 +288,7 @@ gnc_dense_cal_init(GncDenseCal *dcal)
 
     {
         GtkWidget *hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-        GtkWidget *label = gtk_label_new (_("View:"));
+        GtkWidget *label = gtk_label_new (_("View"));
 
         gtk_box_set_homogeneous (GTK_BOX (hbox), FALSE);
         gtk_widget_set_halign (label, GTK_ALIGN_END);
@@ -1330,7 +1330,7 @@ gnc_dense_cal_motion_notify(GtkWidget *widget,
     if (!dcal->showPopup)
         return FALSE;
 
-    /* As per http://www.gtk.org/tutorial/sec-eventhandling.html */
+    /* As per https://www.gtk.org/tutorial/sec-eventhandling.html */
     if (event->is_hint)
     {
 #if GTK_CHECK_VERSION(3,20,0)

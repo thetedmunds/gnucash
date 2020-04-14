@@ -161,6 +161,7 @@ struct _invoice_window
     GtkWidget  * posted_date_hbox;
     GtkWidget  * posted_date;
     GtkWidget  * active_check;
+    GtkWidget  * paid_label;
 
     GtkWidget  * owner_box;
     GtkWidget  * owner_label;
@@ -760,12 +761,12 @@ gnc_dialog_post_invoice(InvoiceWindow *iw, char *message,
     *ddue = *postdate;
     *memo = NULL;
     {
-	GncGUID *guid = NULL;
-	owner_inst = qofOwnerGetOwner (gncOwnerGetEndOwner (&(iw->owner)));
-	qof_instance_get (owner_inst,
-			  "invoice-last-posted-account", &guid,
-			  NULL);
-	*acc = xaccAccountLookup (guid, iw->book);
+    GncGUID *guid = NULL;
+    owner_inst = qofOwnerGetOwner (gncOwnerGetEndOwner (&(iw->owner)));
+    qof_instance_get (owner_inst,
+                      "invoice-last-posted-account", &guid,
+                      NULL);
+    *acc = xaccAccountLookup (guid, iw->book);
     }
     /* Get the default for the accumulate option */
     *accumulate = gnc_prefs_get_bool(GNC_PREFS_GROUP_INVOICE, GNC_PREF_ACCUM_SPLITS);
@@ -957,12 +958,12 @@ gnc_invoice_post(InvoiceWindow *iw, struct post_invoice_params *post_params)
      */
     owner_inst = qofOwnerGetOwner (gncOwnerGetEndOwner (&(iw->owner)));
     {
-	const GncGUID *guid = qof_instance_get_guid (QOF_INSTANCE (acc));
-	qof_begin_edit (owner_inst);
-	qof_instance_set (owner_inst,
-			  "invoice-last-posted-account", guid,
-			  NULL);
-	qof_commit_edit (owner_inst);
+    const GncGUID *guid = qof_instance_get_guid (QOF_INSTANCE (acc));
+    qof_begin_edit (owner_inst);
+    qof_instance_set (owner_inst,
+                      "invoice-last-posted-account", guid,
+                      NULL);
+    qof_commit_edit (owner_inst);
     }
 
     /* ... post it ... */
@@ -1872,22 +1873,12 @@ gnc_invoice_update_window (InvoiceWindow *iw, GtkWidget *widget)
 
         if (is_posted)
         {
-            hide = GTK_WIDGET (gtk_builder_get_object (iw->builder, "hide3"));
-            gtk_widget_hide (hide);
-            hide = GTK_WIDGET (gtk_builder_get_object (iw->builder, "hide4"));
-            gtk_widget_hide (hide);
-
             show = GTK_WIDGET (gtk_builder_get_object (iw->builder, "posted_label"));
             gtk_widget_show (show);
             gtk_widget_show (iw->posted_date_hbox);
             show = GTK_WIDGET (gtk_builder_get_object (iw->builder, "acct_label"));
             gtk_widget_show (show);
             gtk_widget_show (acct_entry);
-
-            show = GTK_WIDGET (gtk_builder_get_object (iw->builder, "hide1"));
-            gtk_widget_show (show);
-            show = GTK_WIDGET (gtk_builder_get_object (iw->builder, "hide2"));
-            gtk_widget_show (show);
         }
         else           /* ! posted */
         {
@@ -1898,11 +1889,6 @@ gnc_invoice_update_window (InvoiceWindow *iw, GtkWidget *widget)
             hide = GTK_WIDGET (gtk_builder_get_object (iw->builder, "acct_label"));
             gtk_widget_hide (hide);
             gtk_widget_hide (acct_entry);
-
-            hide = GTK_WIDGET (gtk_builder_get_object (iw->builder, "hide1"));
-            gtk_widget_hide (hide);
-            hide = GTK_WIDGET (gtk_builder_get_object (iw->builder, "hide2"));
-            gtk_widget_hide (hide);
         }
     }
 
@@ -1931,16 +1917,61 @@ gnc_invoice_update_window (InvoiceWindow *iw, GtkWidget *widget)
         //    GtkWidget *hide;
 
         /* Setup viewer for read-only access */
-        /*
-        gtk_widget_set_sensitive (iw->id_entry, FALSE);
+        gtk_widget_set_sensitive (acct_entry, FALSE);
+        gtk_widget_set_sensitive (iw->id_entry, FALSE); /* XXX: why set FALSE and then TRUE? */
+        gtk_widget_set_sensitive (iw->id_entry, TRUE);
         gtk_widget_set_sensitive (iw->terms_menu, FALSE);
-        gtk_widget_set_sensitive (iw->notes_text, FALSE); *//* XXX: should notes remain writable? */
+        gtk_widget_set_sensitive (iw->owner_box, TRUE);
+        gtk_widget_set_sensitive (iw->job_box, TRUE);
+        gtk_widget_set_sensitive (iw->billing_id_entry, FALSE);
+        gtk_widget_set_sensitive (iw->notes_text, TRUE);
     }
+    else           /* ! posted */
+    {
+        gtk_widget_set_sensitive (acct_entry, TRUE);
+        gtk_widget_set_sensitive (iw->terms_menu, TRUE);
+        gtk_widget_set_sensitive (iw->owner_box, TRUE);
+        gtk_widget_set_sensitive (iw->job_box, TRUE);
+        gtk_widget_set_sensitive (iw->billing_id_entry, TRUE);
+        gtk_widget_set_sensitive (iw->notes_text, TRUE);
+    }
+
+    /* Translators: This is a label to show whether the invoice is paid or not. */
+    if(gncInvoiceIsPaid (invoice))
+        gtk_label_set_text(GTK_LABEL(iw->paid_label),  _("PAID"));
+    else
+        gtk_label_set_text(GTK_LABEL(iw->paid_label),  _("UNPAID"));
 
     if (widget)
         gtk_widget_show (widget);
     else
         gtk_widget_show (iw_get_window(iw));
+}
+
+GncInvoiceType
+gnc_invoice_get_type_from_window (InvoiceWindow *iw)
+{
+    /* uses the same approach as gnc_invoice_get_title
+       not called gnc_invoice_get_type because of name collisions
+    */
+    switch (gncOwnerGetType(&iw->owner))
+    {
+    case GNC_OWNER_CUSTOMER:
+        return iw->is_credit_note ? GNC_INVOICE_CUST_CREDIT_NOTE
+                                  : GNC_INVOICE_CUST_INVOICE;
+        break;
+    case GNC_OWNER_VENDOR:
+        return iw->is_credit_note ? GNC_INVOICE_VEND_CREDIT_NOTE
+                                  : GNC_INVOICE_VEND_INVOICE;
+        break;
+    case GNC_OWNER_EMPLOYEE:
+        return iw->is_credit_note ? GNC_INVOICE_EMPL_CREDIT_NOTE
+                                  : GNC_INVOICE_EMPL_INVOICE;
+        break;
+    default:
+        return GNC_INVOICE_UNDEFINED;
+        break;
+    }
 }
 
 gchar *
@@ -2305,6 +2336,10 @@ gnc_invoice_create_page (InvoiceWindow *iw, gpointer page)
     iw->owner_label = GTK_WIDGET (gtk_builder_get_object (builder, "page_owner_label"));
     iw->job_label = GTK_WIDGET (gtk_builder_get_object (builder, "page_job_label"));
     iw->job_box = GTK_WIDGET (gtk_builder_get_object (builder, "page_job_hbox"));
+    iw->paid_label = GTK_WIDGET (gtk_builder_get_object (builder, "paid_label"));
+
+    // Set the style context for this label so it can be easily manipulated with css
+    gnc_widget_style_context_add_class (GTK_WIDGET(iw->paid_label), "gnc-class-highlight");
 
     /* grab the project widgets */
     iw->proj_frame = GTK_WIDGET (gtk_builder_get_object (builder, "page_proj_frame"));
@@ -2351,6 +2386,8 @@ gnc_invoice_create_page (InvoiceWindow *iw, gpointer page)
     /* Make the opened and posted dates insensitive in this window */
     gtk_widget_set_sensitive (iw->opened_date, FALSE);
     gtk_widget_set_sensitive (iw->posted_date, FALSE);
+    /* Also the invoice ID */
+    gtk_widget_set_sensitive (iw->id_entry, FALSE);
 
     /* Build the ledger */
     ledger_type = GNCENTRY_INVOICE_VIEWER;
@@ -2580,7 +2617,7 @@ gnc_invoice_window_new_invoice (GtkWindow *parent, InvoiceDialogType dialog_type
     iw->type_hbox = GTK_WIDGET (gtk_builder_get_object (builder, "dialog_type_choice_hbox"));
     iw->type_choice = GTK_WIDGET (gtk_builder_get_object (builder, "dialog_type_invoice"));
 
-    /* The default GUI lables are for invoices, so change them if it isn't. */
+    /* The default GUI labels are for invoices, so change them if it isn't. */
     owner_type = gncOwnerGetType (&iw->owner);
     switch(owner_type)
     {
@@ -3344,13 +3381,13 @@ gnc_invoice_show_docs_due (GtkWindow *parent, QofBook *book, double days_in_adva
     if (param_list == NULL)
     {
         /* Translators: This abbreviation is the column heading for
-	   the condition "Is this invoice a Credit Note?" */
+           the condition "Is this invoice a Credit Note?" */
         param_list = gnc_search_param_prepend (param_list, _("CN?"), NULL, type,
                                                INVOICE_IS_CN, NULL);
         param_list = gnc_search_param_prepend (param_list, _("Amount"), NULL, type,
                                                INVOICE_POST_LOT, LOT_BALANCE, NULL);
         param_list = gnc_search_param_prepend (param_list, _("Company"), NULL, type,
-                                               INVOICE_OWNER, OWNER_NAME, NULL);
+                                               INVOICE_OWNER, OWNER_PARENT, OWNER_NAME, NULL);
         param_list = gnc_search_param_prepend (param_list, _("Due"), NULL, type,
                                                INVOICE_DUE, NULL);
     }

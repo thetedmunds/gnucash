@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 #
 # Copyright (c) 2008, Nicolas Rougier
 # All rights reserved.
@@ -55,17 +55,17 @@ class Shell:
         return self.globals
 
     def is_balanced (self, line):
-        """ Checks line balance for brace, bracket, parenthese and string quote
+        """ Checks line balance for brace, bracket, parentheses and string quote
 
         This helper function checks for the balance of brace, bracket,
-        parenthese and string quote. Any unbalanced line means to wait until
+        parentheses and string quote. Any unbalanced line means to wait until
         some other lines are fed to the console.
         """
         
         s = line
-        s = filter(lambda x: x in '()[]{}"\'', s)
-        s = s.replace ("'''", "'")
-        s = s.replace ('"""', '"')
+        s = list(filter(lambda x: x in '()[]{}"\'', s))
+        # s = s.replace ("'''", "'")
+        # s = s.replace ('"""', '"')
         instring = False
         brackets = {'(':')', '[':']', '{':'}', '"':'"', '\'':'\''}
         stack = []
@@ -155,7 +155,7 @@ class Shell:
                     # Command output
                     print(repr(r))
             except SyntaxError:
-                exec(self.command in self.globals)
+                exec(str(self.command), self.globals)
         except:
             if hasattr (sys, 'last_type') and sys.last_type == SystemExit:
                 console.quit()
@@ -163,10 +163,10 @@ class Shell:
                 console.quit()
             else:
                 try:
-                    tb = sys.exc_traceback
+                    tb = sys.exc_info()[2]
                     if tb:
                         tb=tb.tb_next
-                    traceback.print_exception(sys.exc_type, sys.exc_value, tb)
+                    traceback.print_exception(sys.exc_info()[0], sys.exc_info()[1], tb)
                 except:
                     sys.stderr, console.stderr = console.stderr, sys.stderr
                     traceback.print_exc()

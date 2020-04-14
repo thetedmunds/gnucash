@@ -672,7 +672,7 @@ CsvImpTransAssist::~CsvImpTransAssist ()
     /* This function is safe to call on a null pointer */
     gnc_gen_trans_list_delete (gnc_csv_importer_gui);
     /* The call above frees gnc_csv_importer_gui but can't nullify it.
-     * Do it here so noone accidentally can access it still */
+     * Do it here so no one accidentally can access it still */
     gnc_csv_importer_gui = nullptr;
     gtk_widget_destroy (GTK_WIDGET(csv_imp_asst));
 }
@@ -682,7 +682,7 @@ CsvImpTransAssist::~CsvImpTransAssist ()
  * Code related to the file chooser page
  **************************************************/
 
-/* check_for_valid_filename for a valid file to activate the forward button
+/* check_for_valid_filename for a valid file to activate the "Next" button
  */
 bool
 CsvImpTransAssist::check_for_valid_filename ()
@@ -731,7 +731,7 @@ CsvImpTransAssist::file_activated_cb ()
 void
 CsvImpTransAssist::file_selection_changed_cb ()
 {
-    /* Enable the forward button based on a valid filename */
+    /* Enable the "Next" button based on a valid filename */
     gtk_assistant_set_page_complete (csv_imp_asst, file_page,
         check_for_valid_filename ());
 }
@@ -1596,10 +1596,14 @@ void CsvImpTransAssist::preview_refresh_table ()
     g_object_unref (combostore);
 
     /* Also reset the base account combo box as it's value may have changed due to column changes here */
-    g_signal_handlers_block_by_func (acct_selector, (gpointer) csv_tximp_preview_acct_sel_cb, this);
-    gnc_account_sel_set_account(GNC_ACCOUNT_SEL(acct_selector),
-            tx_imp->base_account() , false);
-    g_signal_handlers_unblock_by_func (acct_selector, (gpointer) csv_tximp_preview_acct_sel_cb, this);
+    auto base_acct = gnc_account_sel_get_account(GNC_ACCOUNT_SEL(acct_selector));
+    if (tx_imp->base_account() != base_acct)
+    {
+        g_signal_handlers_block_by_func (acct_selector, (gpointer) csv_tximp_preview_acct_sel_cb, this);
+        gnc_account_sel_set_account(GNC_ACCOUNT_SEL(acct_selector),
+                tx_imp->base_account() , false);
+        g_signal_handlers_unblock_by_func (acct_selector, (gpointer) csv_tximp_preview_acct_sel_cb, this);
+    }
 
     /* Make the things actually appear. */
     gtk_widget_show_all (GTK_WIDGET(treeview));
@@ -1799,7 +1803,7 @@ csv_tximp_acct_match_text_parse (std::string acct_name)
 void
 CsvImpTransAssist::acct_match_select(GtkTreeModel *model, GtkTreeIter* iter)
 {
-    // Get the the stored string and account (if any)
+    // Get the stored string and account (if any)
     gchar *text = nullptr;
     Account *account = nullptr;
     gtk_tree_model_get (model, iter, MAPPING_STRING, &text,
@@ -1885,7 +1889,7 @@ CsvImpTransAssist::assist_file_page_prepare ()
         g_free (starting_dir);
     }
 
-    /* Disable the Forward Assistant Button */
+    /* Disable the "Next" Assistant Button */
     gtk_assistant_set_page_complete (csv_imp_asst, account_match_page, false);
 }
 
@@ -1933,7 +1937,7 @@ CsvImpTransAssist::assist_preview_page_prepare ()
 
         tx_imp->req_mapped_accts (false);
 
-        /* Disable the Forward Assistant Button */
+        /* Disable the "Next" Assistant Button */
         gtk_assistant_set_page_complete (csv_imp_asst, preview_page, false);
 
         /* Load the data into the treeview. */
@@ -1962,7 +1966,7 @@ CsvImpTransAssist::assist_account_match_page_prepare ()
     gtk_widget_set_sensitive (account_match_view, true);
     gtk_widget_set_sensitive (account_match_btn, true);
 
-    /* Enable the Forward Assistant Button */
+    /* Enable the "Next" Assistant Button */
     gtk_assistant_set_page_complete (csv_imp_asst, account_match_page,
                csv_tximp_acct_match_check_all (store));
 }
@@ -2075,7 +2079,7 @@ CsvImpTransAssist::assist_summary_page_prepare ()
     // FIXME Rather than passing a locale generator below we probably should set std::locale::global appropriately somewhere.
     bl::generator gen;
     gen.add_messages_path(gnc_path_get_localedir());
-    gen.add_messages_domain(GETTEXT_PACKAGE);
+    gen.add_messages_domain(PROJECT_NAME);
 
     auto text = std::string("<span size=\"medium\"><b>");
     try

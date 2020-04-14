@@ -132,7 +132,7 @@ typedef struct GncTreeModelPricePrivate
 } GncTreeModelPricePrivate;
 
 #define GNC_TREE_MODEL_PRICE_GET_PRIVATE(o)  \
-   (G_TYPE_INSTANCE_GET_PRIVATE ((o), GNC_TYPE_TREE_MODEL_PRICE, GncTreeModelPricePrivate))
+   ((GncTreeModelPricePrivate*)g_type_instance_get_private((GTypeInstance*)o, GNC_TYPE_TREE_MODEL_PRICE))
 
 /** A pointer to the parent class of a price tree model. */
 static GObjectClass *parent_class = NULL;
@@ -219,6 +219,8 @@ gnc_tree_model_price_new (QofBook *book, GNCPriceDB *price_db)
     GncTreeModelPricePrivate *priv;
     const GList *item;
 
+    ENTER(" ");
+
     item = gnc_gobject_tracking_get_list(GNC_TREE_MODEL_PRICE_NAME);
     for ( ; item; item = g_list_next(item))
     {
@@ -232,8 +234,7 @@ gnc_tree_model_price_new (QofBook *book, GNCPriceDB *price_db)
         }
     }
 
-    model = g_object_new (GNC_TYPE_TREE_MODEL_PRICE,
-                          NULL);
+    model = g_object_new (GNC_TYPE_TREE_MODEL_PRICE, NULL);
 
     priv = GNC_TREE_MODEL_PRICE_GET_PRIVATE(model);
     priv->book = book;
@@ -242,6 +243,7 @@ gnc_tree_model_price_new (QofBook *book, GNCPriceDB *price_db)
     priv->event_handler_id =
         qof_event_register_handler (gnc_tree_model_price_event_handler, model);
 
+    LEAVE("returning new model %p", model);
     return GTK_TREE_MODEL (model);
 }
 
@@ -733,7 +735,7 @@ gnc_tree_model_price_get_value (GtkTreeModel *tree_model,
         g_value_set_string (value, gnc_commodity_get_printname (commodity));
         break;
     case GNC_TREE_MODEL_PRICE_COL_DATE:
-        qof_print_date_buff (datebuff, sizeof(datebuff),
+        qof_print_date_buff (datebuff, MAX_DATE_LENGTH,
                              gnc_price_get_time64 (price));
         g_value_init (value, G_TYPE_STRING);
         g_value_set_string (value, datebuff);
@@ -1244,7 +1246,7 @@ gnc_tree_model_price_get_iter_from_commodity (GncTreeModelPrice *model,
     n = g_list_index(list, commodity);
     if (n == -1)
     {
-        LEAVE("not in list");
+        LEAVE("commodity not in list");
         return FALSE;
     }
 
@@ -1280,11 +1282,17 @@ gnc_tree_model_price_get_iter_from_namespace (GncTreeModelPrice *model,
     ct = qof_book_get_data (priv->book, GNC_COMMODITY_TABLE);
     list = gnc_commodity_table_get_namespaces_list(ct);
     if (list == NULL)
+    {
+        LEAVE("namespace list empty");
         return FALSE;
+    }
 
     n = g_list_index(list, name_space);
     if (n == -1)
+    {
+        LEAVE("namespace not found");
         return FALSE;
+    }
 
     iter->stamp = model->stamp;
     iter->user_data  = ITER_IS_NAMESPACE;
@@ -1466,7 +1474,7 @@ gnc_tree_model_price_row_delete (GncTreeModelPrice *model,
  *  item removal.
  */
 static gboolean
-gnc_tree_model_price_do_deletions (gpointer unused)
+gnc_tree_model_price_do_deletions (gpointer price_db)
 {
     ENTER(" ");
 
@@ -1482,6 +1490,7 @@ gnc_tree_model_price_do_deletions (gpointer unused)
 
             /* Remove the path. */
             gnc_tree_model_price_row_delete(data->model, data->path);
+            gnc_pricedb_nth_price_reset_cache (price_db);
 
             gtk_tree_path_free(data->path);
             g_free(data);
@@ -1532,6 +1541,7 @@ gnc_tree_model_price_event_handler (QofInstance *entity,
                                     gpointer event_data)
 {
     GncTreeModelPrice *model;
+    GncTreeModelPricePrivate *priv;
     GtkTreePath *path;
     GtkTreeIter iter;
     remove_data *data;
@@ -1540,10 +1550,11 @@ gnc_tree_model_price_event_handler (QofInstance *entity,
     ENTER("entity %p, event %d, model %p, event data %p",
           entity, event_type, user_data, event_data);
     model = (GncTreeModelPrice *)user_data;
+    priv = GNC_TREE_MODEL_PRICE_GET_PRIVATE(model);
 
     /* Do deletions if any are pending. */
     if (pending_removals)
-        gnc_tree_model_price_do_deletions(NULL);
+        gnc_tree_model_price_do_deletions (priv->price_db);
 
     /* hard failures */
     g_return_if_fail(GNC_IS_TREE_MODEL_PRICE(model));
@@ -1596,14 +1607,16 @@ gnc_tree_model_price_event_handler (QofInstance *entity,
     }
     else
     {
+        LEAVE(" ");
         return;
     }
 
     switch (event_type)
     {
     case QOF_EVENT_ADD:
-        /* Tell the filters/views where the new account was added. */
+        /* Tell the filters/views where the new price was added. */
         DEBUG("add %s", name);
+        gnc_pricedb_nth_price_reset_cache (priv->price_db);
         gnc_tree_model_price_row_add (model, &iter);
         break;
 
@@ -1622,7 +1635,7 @@ gnc_tree_model_price_event_handler (QofInstance *entity,
         data->path = path;
         pending_removals = g_slist_append (pending_removals, data);
         g_idle_add_full(G_PRIORITY_HIGH_IDLE,
-                        gnc_tree_model_price_do_deletions, NULL, NULL);
+                        gnc_tree_model_price_do_deletions, priv->price_db, NULL);
 
         LEAVE(" ");
         return;

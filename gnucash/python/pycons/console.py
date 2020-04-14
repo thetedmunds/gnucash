@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 #
 # Copyright (c) 2008, Nicolas Rougier
 # All rights reserved.
@@ -35,6 +35,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import GObject
 from gi.repository import Gtk
+from gi.repository import Gdk
 from gi.repository import Pango
 import io
 import pycons.shell as shell
@@ -125,7 +126,7 @@ class Console (Gtk.ScrolledWindow):
     """ GTK python console """
 
     def __init__(self, argv=[], shelltype='python', banner=[],
-                 filename=None, size=100):
+                 filename=None, size=100, user_local_ns=None, user_global_ns=None):
 
         """ Console interface building + initialization"""
 
@@ -183,12 +184,18 @@ class Console (Gtk.ScrolledWindow):
         self.history_init(filename, size)
         self.cout = io.StringIO()
         self.cout.truncate(0)
+
+        if not user_local_ns:
+            user_local_ns = locals()
+        if not user_global_ns:
+            user_global_ns = globals()
+
         if shelltype=='ipython':
-            self.shell = ishell.Shell(argv,locals(),globals(),
+            self.shell = ishell.Shell(argv,user_local_ns, user_global_ns,
                                 cout=self.cout, cerr=self.cout,
                                 input_func=self.raw_input)
         else:
-            self.shell = shell.Shell(locals(),globals())
+            self.shell = shell.Shell(user_local_ns,user_global_ns)
         self.interrupt = False
         self.input_mode = False
         self.input = None
@@ -433,7 +440,6 @@ class Console (Gtk.ScrolledWindow):
     def quit(self):
         """ Quit console """
 
-        Gtk.main_quit()
         self.history_save()
         try:
             os.close (self.piperead)
